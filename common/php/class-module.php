@@ -17,6 +17,12 @@ class EF_Module {
 	
 	function __construct() {
 		add_action( 'wp_ajax_load_users', array($this, 'users_select_form') );
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
+
+	}
+
+	function enqueue_admin_scripts(){
+//		wp_enqueue_script( 'load-users', 'load_users.js', array( 'jquery'), EDIT_FLOW_VERSION, true );
 	}
 
 	/**
@@ -484,10 +490,14 @@ class EF_Module {
 
 		?>
 
-        <div id="users-page">
-        <p>Page <?php echo esc_attr($current_page) ?> of <?php echo esc_attr($num_pages)?></p>
-        <p>Displaying user <?php echo esc_attr($start_user_num)?>-<?php echo esc_attr($end_user_num) ?> of <?php echo esc_attr($total_users) ?></p>
         <input type="hidden" id="current_page" value="<?php echo esc_attr($current_page) ?>">
+
+        <div id="users-page">
+        <p>Page
+            <span id="current_page_display"><?php echo esc_attr($current_page) ?></span>
+            of <?php echo esc_attr($num_pages)?>
+        </p>
+        <p>Displaying user <?php echo esc_attr($start_user_num)?>-<?php echo esc_attr($end_user_num) ?> of <?php echo esc_attr($total_users) ?></p>
 
 		<?php if( !empty($users) ) : ?>
             <ul class="<?php echo esc_attr( $list_class ) ?>">
@@ -508,18 +518,14 @@ class EF_Module {
         <button type="button" id="next">Next</button>
 
 		<?php
-
-
+        
 		add_action( 'admin_footer', 'load_users_javascript' );
 
 		function load_users_javascript() { ?>
             <script type="text/javascript" >
                 jQuery(document).ready(function($) {
 
-
-
                     $('#next').click(function(){
-                        console.log('tes');
 
                         const current_page = $('input#current_page').val();
 
@@ -532,19 +538,63 @@ class EF_Module {
 
                         // since 2.8 ajaxurl is always defined in the admin header and points to admin-ajax.php
                         jQuery.post(ajaxurl, data, function(response) {
-                            // alert(response);
-                            $('#users-page').html(response);
+                            // alert(JSON.stringify(response));
+                            const res = JSON.parse(response);
+                            console.log(res);
+
+                            // change the attributes and values of users list items
+                            const users_ul = document.getElementsByClassName('ef-post_following_list')[0];
+                            const users_li = users_ul.getElementsByTagName('li');
+
+                             for(let i = 0; i < users_li.length; i++){
+
+                                 const label = users_li[i].getElementsByTagName('label')[0];
+                                 label.setAttribute('for', 'usergroup_users-' + res.users[i].ID);
+
+                                 const input = label.getElementsByTagName('input')[0];
+                                 input.setAttribute('id', 'usergroup_users-' + res.users[i].ID);
+                                 input.setAttribute('value', res.users[i].ID);
+
+                                 const displayname = label.getElementsByClassName('ef-user_displayname')[0];
+                                 displayname.innerHTML = res.users[i].display_name;
+
+                                 const useremail = label.getElementsByClassName('ef-user_useremail')[0];
+                                 useremail.innerHTML = res.users[i].user_email;
+
+                                 console.log(label);
+                             }
+
+                             // change hidden page content value
+                            const current_page = document.getElementById('current_page');
+                             current_page.setAttribute('value', res.current_page);
+
+                             const current_page_display = document.getElementById('current_page_display');
+                             current_page_display.innerText = res.current_page;
+                             console.log(current_page);
+
+
+                            console.log(response);
+
+                            jQuery( document.body ).trigger( 'post-load' );
+
                         });
 
                     });
-
-
 
                 });
             </script> <?php
 		}
 
+		$results['selected'] = $selected;
+		$results['current_page'] = $current_page;
+		$results['users'] = $users;
+
+
 		if (isset($_POST['action']) && !empty($_POST['action'])){
+
+			ob_clean();
+
+			echo json_encode($results);
             wp_die();
         }
 
