@@ -15,7 +15,9 @@ class EF_Module {
 								'private',
 							);
 	
-	function __construct() {}
+	function __construct() {
+		add_action( 'wp_ajax_load_users', array($this, 'users_select_form') );
+	}
 
 	/**
 	 * Returns whether the module with the given name is enabled.
@@ -451,6 +453,10 @@ class EF_Module {
 		$parsed_args = wp_parse_args( $args, $defaults );
 		extract($parsed_args, EXTR_SKIP);
 
+		// Pagination vars
+        $current_page = isset($_POST['paged']) ? intval($_POST['paged']) : 1;
+        $users_per_page = 3;
+
 		$args = array(
 			'who' => 'authors',
 			'fields' => array(
@@ -459,29 +465,93 @@ class EF_Module {
 				'user_email'
 			),
 			'orderby' => 'display_name',
+            'paged' => $current_page,
+            'number' => $users_per_page
 		);
+
 		$args = apply_filters( 'ef_users_select_form_get_users_args', $args );
-		$users = get_users( $args );
+
+		$user_search = new WP_User_Query($args);
+		$users = $user_search->get_results();
+        $total_users = $user_search->get_total();
+        $num_pages = ceil($total_users / $users_per_page);
+
+        // displayed user range
+		$start_user_num = (($current_page-1) * $users_per_page) + 1;
+		$end_user_num = $start_user_num + $users_per_page - 1;
 
 		if ( !is_array($selected) ) $selected = array();
+
 		?>
 
+        <div id="users-page">
+        <p>Page <?php echo esc_attr($current_page) ?> of <?php echo esc_attr($num_pages)?></p>
+        <p>Displaying user <?php echo esc_attr($start_user_num)?>-<?php echo esc_attr($end_user_num) ?> of <?php echo esc_attr($total_users) ?></p>
+        <input type="hidden" id="current_page" value="<?php echo esc_attr($current_page) ?>">
+
 		<?php if( !empty($users) ) : ?>
-			<ul class="<?php echo esc_attr( $list_class ) ?>">
+            <ul class="<?php echo esc_attr( $list_class ) ?>">
 				<?php foreach( $users as $user ) : ?>
 					<?php $checked = ( in_array($user->ID, $selected) ) ? 'checked="checked"' : ''; ?>
-					<li>
-						<label for="<?php echo esc_attr( $input_id .'-'. $user->ID ) ?>">
-							<input type="checkbox" id="<?php echo esc_attr( $input_id .'-'. $user->ID ) ?>" name="<?php echo esc_attr( $input_id ) ?>[]" value="<?php echo esc_attr( $user->ID ); ?>" <?php echo $checked; ?> />
-							<span class="ef-user_displayname"><?php echo esc_html( $user->display_name ); ?></span>
-							<span class="ef-user_useremail"><?php echo esc_html( $user->user_email ); ?></span>
-						</label>
-					</li>
+                    <li>
+                        <label for="<?php echo esc_attr( $input_id .'-'. $user->ID ) ?>">
+                            <input type="checkbox" id="<?php echo esc_attr( $input_id .'-'. $user->ID ) ?>" name="<?php echo esc_attr( $input_id ) ?>[]" value="<?php echo esc_attr( $user->ID ); ?>" <?php echo $checked; ?> />
+                            <span class="ef-user_displayname"><?php echo esc_html( $user->display_name ); ?></span>
+                            <span class="ef-user_useremail"><?php echo esc_html( $user->user_email ); ?></span>
+                        </label>
+                    </li>
 				<?php endforeach; ?>
-			</ul>
+            </ul>
 		<?php endif; ?>
+
+        </div>
+        <button type="button" id="next">Next</button>
+
 		<?php
+
+
+		add_action( 'admin_footer', 'load_users_javascript' );
+
+		function load_users_javascript() { ?>
+            <script type="text/javascript" >
+                jQuery(document).ready(function($) {
+
+
+
+                    $('#next').click(function(){
+                        console.log('tes');
+
+                        const current_page = $('input#current_page').val();
+
+                        const data = {
+                            'action': 'load_users',
+                            'paged': parseInt(current_page) + 1
+                        };
+
+                        // alert(JSON.stringify(data));
+
+                        // since 2.8 ajaxurl is always defined in the admin header and points to admin-ajax.php
+                        jQuery.post(ajaxurl, data, function(response) {
+                            // alert(response);
+                            $('#users-page').html(response);
+                        });
+
+                    });
+
+
+
+                });
+            </script> <?php
+		}
+
+		if (isset($_POST['action']) && !empty($_POST['action'])){
+            wp_die();
+        }
+
+
 	}
+
+
 
 	/**
 	 * Adds an array of capabilities to a role.
